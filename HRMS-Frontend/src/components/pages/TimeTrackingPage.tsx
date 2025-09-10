@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Calendar, 
   Clock, 
@@ -21,11 +21,14 @@ import {
   CalendarDays,
   List,
   FileText,
-  Table
+  Table,
+  Copy,
+  Save
 } from 'lucide-react';
 
 import { TimeEntryModal } from '../Modal/TimeEntryModal';
-import { fetchTimeEntries, createTimeEntry, updateTimeEntry, deleteTimeEntry, fetchProjects, fetchEmployees } from '../../services/timeEntries.service';
+import { fetchTimeEntries, createTimeEntry, updateTimeEntry, deleteTimeEntry, fetchProjects, fetchEmployees,createManyTimeEntries } from '../../services/timeEntries.service';
+import { extendedMockEmployees } from '../../data/mockData';
 
 interface TimeEntry {
   id: number;
@@ -50,6 +53,7 @@ interface TimeEntry {
 }
 
 export interface TimeEntryForm {
+  project: string | number | readonly string[] | undefined;
   employeeId: number;
   projectId: number;
   task: string;
@@ -70,13 +74,18 @@ export const TimeTrackingPage: React.FC = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedEmployee, setSelectedEmployee] = useState<string>('all');
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
+  const [showBulkForm, setShowBulkForm] = useState(false);
   const [projects, setProjects] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null);
-  const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [isTimerRunning, setIsTimerRunning] = useState<boolean>(false);
+  // store the real timestamp when session started (null = no active session)
   const [timerStart, setTimerStart] = useState<Date | null>(null);
-  const [currentTimer, setCurrentTimer] = useState(0);
+  const [currentTimer, setCurrentTimer] = useState<number>(0);
+
+  // ref to store interval id so we can clear it reliably
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Date range filtering
   const [dateRangeFilter, setDateRangeFilter] = useState({
@@ -95,9 +104,9 @@ export const TimeTrackingPage: React.FC = () => {
 ]);
 
 // Ensure entries is always an array
-const entries = Array.isArray(entriesResponse)
+const entries: TimeEntry[] = Array.isArray(entriesResponse)
   ? entriesResponse
-  : entriesResponse?.data || [];
+  : (entriesResponse?.data as TimeEntry[]) || [];
 
 setTimeEntries(entries);
         setProjects(fetchedProjects);
@@ -110,25 +119,40 @@ setTimeEntries(entries);
   }, []);
 
   // Timer effect
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isTimerRunning && timerStart) {
-      interval = setInterval(() => {
-        setCurrentTimer(Math.floor((Date.now() - timerStart.getTime()) / 1000));
-      }, 1000);
+useEffect(() => {
+  // clear previous interval if any
+  if (intervalRef.current) {
+    clearInterval(intervalRef.current);
+    intervalRef.current = null;
+  }
+
+  if (isTimerRunning && timerStart) {
+    // set immediate elapsed value
+    setCurrentTimer(Math.floor((Date.now() - timerStart.getTime()) / 1000));
+
+    // then update every second
+    intervalRef.current = setInterval(() => {
+      setCurrentTimer(Math.floor((Date.now() - (timerStart as Date).getTime()) / 1000));
+    }, 1000);
+  }
+
+  // cleanup when dependencies change or on unmount
+  return () => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
     }
-    return () => clearInterval(interval);
-  }, [isTimerRunning, timerStart]);
-
-  const getProjectColor = (project: string) => {
-    const projectColors = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500'];
-    const hash = project.split('').reduce((a, b) => {
-      a = ((a << 5) - a) + b.charCodeAt(0);
-      return a & a;
-    }, 0);
-    return projectColors[Math.abs(hash) % projectColors.length];
   };
+}, [isTimerRunning, timerStart]);
 
+const getProjectColor = (project: string): string => {
+  const projectColors = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500'];
+  const hash = project.split('').reduce((a, b) => {
+    a = ((a << 5) - a) + b.charCodeAt(0);
+    return a & a;
+  }, 0);
+  return projectColors[Math.abs(hash) % projectColors.length];
+};
   // Get current week dates
   const getWeekDates = (date: Date) => {
     const week = [];
@@ -201,17 +225,16 @@ setTimeEntries(entries);
       setShowAddForm(false);
     } catch (error) {
       console.error("Failed to save time entry:", error);
-      alert('Failed to save time entry. Please try again.');
+      console.log('Failed to save time entry. Please try again.');
     }
   };
 
   const editEntry = (entry: TimeEntry) => {
     const entryDate = new Date(entry.date);
-    const today = new Date();
+    const todayDate = new Date();
     
-    // Only allow editing today's entries
-    if (entryDate.toDateString() !== today.toDateString()) {
-      alert('You can only edit today\'s time entries');
+    if (entryDate.toDateString() !== todayDate.toDateString()) {
+      console.log('You can only edit today\'s time entries');
       return;
     }
 
@@ -220,71 +243,118 @@ setTimeEntries(entries);
   };
 
   const deleteEntry = async (id: number) => {
-    if (confirm('Are you sure you want to delete this time entry?')) {
+    // NOTE: `window.confirm` is used here because a custom modal is not provided in the user's code.
+    // In a real app, this should be replaced with a custom modal UI.
+    if (window.confirm('Are you sure you want to delete this time entry?')) {
       try {
         await deleteTimeEntry(id);
         const updatedEntries = await fetchTimeEntries();
         setTimeEntries(updatedEntries);
       } catch (error) {
         console.error("Failed to delete time entry:", error);
-        alert('Failed to delete time entry. Please try again.');
+        console.log('Failed to delete time entry. Please try again.');
       }
     }
   };
-
-const startTimer = () => {
-  const now = new Date();
-  setAutoStartTime(now); // store start time
-  setIsTimerRunning(true);
-  setTimerStart(true);
-};
+  const [autoStartTime, setAutoStartTime] = useState<Date | null>(null);
+  const startTimer = () => {
+    const now = new Date();
+    if (typeof setAutoStartTime === 'function') {
+      setAutoStartTime(now);
+    }
+    setTimerStart(now);
+    setIsTimerRunning(true);
+  };
 
 
   const pauseTimer = () => {
     setIsTimerRunning(false);
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
   };
+  const stopTimer = () => {
+    const end = new Date();
+    if (!timerStart) {
+      setIsTimerRunning(false);
+      setCurrentTimer(0);
+      return;
+    }
+    const durationSeconds = Math.floor((end.getTime() - timerStart.getTime()) / 1000);
+    const durationHours = Number((durationSeconds / 3600).toFixed(2));
 
-  const stopTimer = async () => {
-  const end = new Date();
-  setIsTimerRunning(false);
+    const employeeId = selectedEmployee !== 'all' ? Number(selectedEmployee) : (employees[0]?.id ?? 0);
+    const projectId = projects[0]?.id ?? 0;
 
-  if (autoStartTime) {
-    const durationMs = end.getTime() - autoStartTime.getTime();
-    const durationHours = parseFloat((durationMs / (1000 * 60 * 60)).toFixed(2));
-
-    const newEntry = {
-      employeeId: selectedEmployeeId, // fetch this dynamically based on your auth/session
-      projectId: selectedProjectId,   // from dropdown or current project context
-      task: "Auto Timer Entry",
-      date: new Date().toISOString(),
-      startTime: autoStartTime.toISOString(),
+    const prefillEntry: TimeEntry = {
+      id: Date.now(),
+      employeeId,
+      projectId,
+      task: '',
+      date: timerStart.toISOString().split('T')[0],
+      startTime: timerStart.toISOString(),
       endTime: end.toISOString(),
       duration: durationHours,
-      description: "Automatically logged via timer",
-      billable: true
+      description: '',
+      billable: false,
+      employee: employees.find((e: any) => e.id === employeeId) || { id: employeeId, fullName: '', role: '' },
+      project: projects.find((p: any) => p.id === projectId) || { id: projectId, name: '' }
     };
 
-    try {
-      await createTimeEntry(newEntry);
-      console.log("Auto time entry created!");
-      // optionally refresh your list: fetchTimeEntries();
-    } catch (error) {
-      console.error("Failed to create time entry:", error);
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
     }
-  }
 
-  setAutoStartTime(null);
-  setTimerStart(false);
-  setCurrentTimer(0);
+    setIsTimerRunning(false);
+    setCurrentTimer(durationSeconds);
+    setTimerStart(null);
+    if (typeof setAutoStartTime === 'function') setAutoStartTime(null);
+
+    setEditingEntry(null);
+    setShowAddForm(true);
+  };
+const handleBulkChange = (
+  index: number,
+  field?: keyof TimeEntryForm,
+  value?: any
+) => {
+  if (!field) return; // ignore invalid calls
+  setBulkEntries(prev =>
+    prev.map((entry, i) => {
+      if (i === index) {
+        const updated = { ...entry, [field]: value };
+        if (field === 'startTime' || field === 'endTime') {
+          updated.duration = calculateDuration(updated.startTime, updated.endTime);
+        }
+        return updated;
+      }
+      return entry;
+    })
+  );
 };
-
   const formatTimer = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
-
+  const removeBulkEntry = (index: number) => {
+    setBulkEntries(prev => prev.filter((_, i) => i !== index));
+  };
+ const [bulkEntries, setBulkEntries] = useState<TimeEntryForm[]>([{
+  employeeId: 0,
+  projectId: 0,
+  project: '',
+  task: '',
+  date: new Date().toISOString().split('T')[0],
+  startTime: '',
+  endTime: '',
+  duration: 0,
+  description: '',
+  billable: true,
+}]);
 const filteredEntries = Array.isArray(timeEntries)
   ? timeEntries.filter(entry => {
       if (selectedEmployee !== 'all' && entry.employeeId !== Number(selectedEmployee)) {
@@ -324,7 +394,45 @@ const filteredEntries = Array.isArray(timeEntries)
       setCurrentDate(newDate);
     }
   };
+  const saveBulkEntries = async () => {
+  const validEntries = bulkEntries.filter(entry =>
+    entry.employeeId && entry.projectId && entry.task && entry.startTime && entry.endTime
+  );
 
+  if (validEntries.length === 0) {
+    alert('Please fill in at least one complete entry');
+    return;
+  }
+
+  try {
+    // If your backend has bulk create API:
+    // await createBulkTimeEntries(validEntries);
+
+    // Otherwise, loop createTimeEntry for each
+   await Promise.all(validEntries.map(entry => createManyTimeEntries([entry])));
+
+    const updatedEntries = await fetchTimeEntries();
+    setTimeEntries(updatedEntries);
+    setShowBulkForm(false);
+
+    // reset
+    setBulkEntries([{
+      employeeId: 0,
+      projectId: 0,
+      project: '',
+      task: '',
+      date: new Date().toISOString().split('T')[0],
+      startTime: '',
+      endTime: '',
+      duration: 0,
+      description: '',
+      billable: true,
+    }]);
+  } catch (error) {
+    console.error("Failed to save bulk entries:", error);
+    alert("Failed to save bulk entries. Please try again.");
+  }
+};
   const navigateNext = () => {
     if (viewMode === 'week') {
       setCurrentDate(new Date(currentDate.getTime() + 7 * 24 * 60 * 60 * 1000));
@@ -385,7 +493,75 @@ const filteredEntries = Array.isArray(timeEntries)
     return teamData;
   };
   const teamTimesheetData = getTeamTimesheetData();
+  
+  // New function to calculate position, height, and horizontal offset for a time entry block
+  const getCalendarEntries = (date: Date) => {
+    const entries = getEntriesForDate(date);
+    entries.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+    
+    // We will keep track of which vertical "lanes" are occupied
+    const lanes: { end: number; entry: TimeEntry }[] = [];
+    
+    return entries.map(entry => {
+      const start = new Date(entry.startTime);
+      const end = new Date(entry.endTime);
+      const dayStartHour = 9;
+      
+      // Calculate vertical position and height
+      const startMinutes = start.getHours() * 60 + start.getMinutes();
+      const endMinutes = end.getHours() * 60 + end.getMinutes();
+      const offsetMinutes = startMinutes - (dayStartHour * 60);
+      const durationMinutes = endMinutes - startMinutes;
+      const pxPerMinute = 90 / 60;
+      
+      const top = offsetMinutes * pxPerMinute;
+      const height = durationMinutes * pxPerMinute;
+      
+      // Calculate horizontal position and width
+      let laneIndex = -1;
+      // Find the first available lane
+      for (let i = 0; i < lanes.length; i++) {
+        if (lanes[i].end <= startMinutes) {
+          laneIndex = i;
+          break;
+        }
+      }
+      
+      // If no lane is available, create a new one
+      if (laneIndex === -1) {
+        laneIndex = lanes.length;
+        lanes.push({ end: endMinutes, entry });
+      } else {
+        lanes[laneIndex].end = endMinutes;
+        lanes[laneIndex].entry = entry;
+      }
+      
+      const numOverlapping = lanes.length;
+      const width = 100 / numOverlapping;
+      const left = laneIndex * width;
+      
+      return { ...entry, style: { top: `${top}px`, height: `${height}px`, left: `${left}%`, width: `${width}%` } };
+    });
+  };
 
+function addBulkEntry(e: React.MouseEvent<HTMLButtonElement>): void {
+  e.preventDefault();
+  setBulkEntries(prev => [
+    ...prev,
+    {
+      employeeId: 0,
+      projectId: 0,
+      project: '',
+      task: '',
+      date: new Date().toISOString().split('T')[0],
+      startTime: '',
+      endTime: '',
+      duration: 0,
+      description: '',
+      billable: true,
+    }
+  ]);
+}
   return (
     <div className="p-6 max-w-15xl mx-auto bg-gradient-to-br from-blue-50 via-white to-purple-50 min-h-screen">
       {/* Header */}
@@ -635,6 +811,13 @@ const filteredEntries = Array.isArray(timeEntries)
                 <Plus className="w-4 h-4 mr-2" />
                 Add Time
               </button>
+                  <button
+                onClick={() => setShowBulkForm(true)}
+                className="flex items-center px-4 py-2 bg-purple-500 text-white rounded-xl hover:bg-purple-600 transition-colors shadow-md font-medium"
+              >
+                <Copy className="w-4 h-4 mr-2" />
+                Bulk Add
+              </button>
             </div>
           )}
         </div>
@@ -642,213 +825,124 @@ const filteredEntries = Array.isArray(timeEntries)
 
       {/* Content based on active section */}
       {activeSection === 'timesheet' ? (
-        // Original Calendar Grid
+        // Weekly calendar view with time blocks
         <div className="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
-          {viewMode === 'week' ? (
-            // Weekly View
-            <>
-              {/* Calendar Header */}
-              <div className="grid grid-cols-[80px_repeat(7,minmax(0,1fr))] bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
-                <div className="p-4 text-center text-lg font-bold text-gray-700 border-r border-gray-200">
-                  Time
-                </div>
-                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, index) => {
-                  const date = displayDates[index];
-                  const isToday = date.toDateString() === today;
-                  const totalHours = getEntriesForDate(date).reduce((sum, entry) => sum + entry.duration, 0);
-                  
-                  return (
-                    <div key={day} className={`p-4 text-center border-r last:border-r-0 border-gray-200 ${
-                      isToday ? 'bg-gradient-to-b from-blue-100 to-blue-50' : ''
-                    }`}>
-                      <div className={`font-bold text-lg ${
-                        isToday ? 'text-blue-700' : 'text-gray-700'
-                      }`}>
-                        {day}
-                      </div>
-                      <div className={`text-sm ${
-                        isToday ? 'text-blue-600' : 'text-gray-500'
-                      }`}>
-                        {date.getDate()}
-                      </div>
-                      {totalHours > 0 && (
-                        <div className={`text-xs font-medium mt-1 px-2 py-1 rounded-full ${
-                          isToday ? 'bg-blue-200 text-blue-800' : 'bg-gray-200 text-gray-700'
-                        }`}>
-                          {totalHours.toFixed(1)}h
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+          {/* Calendar Header */}
+          <div className="grid grid-cols-[80px_repeat(7,minmax(0,1fr))] bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+            <div className="p-4 text-center text-lg font-bold text-gray-700 border-r border-gray-200">
+              Time
+            </div>
+            {displayDates.map((date, index) => {
+              const isToday = date.toDateString() === today;
+              const totalHours = getEntriesForDate(date).reduce((sum, entry) => sum + entry.duration, 0);
+              const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-              {/* Calendar Body with Time Slots */}
-              <div className="max-h-[600px] overflow-y-auto">
-                {[...Array(10)].map((_, slotIndex) => {
-                  const timeSlot = `${String(9 + slotIndex).padStart(2, '0')}:00`;
-                  return (
-                    <div key={timeSlot} className="grid grid-cols-[80px_repeat(7,minmax(0,1fr))] border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                      {/* Time Column */}
-                      <div className="p-2 border-r border-gray-200 bg-gray-50 flex items-center justify-center">
-                        <div className="text-center">
-                          <div className="font-semibold text-gray-700 text-xs">
-                            {timeSlot}
-                          </div>
-                        </div>
-                      </div>
-                      
-                      {/* Day Columns */}
-                      {displayDates.map((date, dayIndex) => {
-                        const entries = getEntriesForDate(date).filter(entry => {
-                          const startHour = new Date(entry.startTime).getHours();
-                          return startHour === (9 + slotIndex);
-                        });
-                        const isToday = date.toDateString() === today;
-                        
-                        return (
-                          <div
-                            key={dayIndex}
-                            className={`border-r last:border-r-0 border-gray-200 p-2 min-h-[80px] ${
-                              isToday ? 'bg-blue-50/30' : ''
-                            }`}
-                          >
-                            <div className="space-y-1">
-                              {entries.map((entry) => {
-                                const colorClass = getProjectColor(entry.project.name);
-                                const textColorClass = colorClass.replace('bg-', 'text-').replace('-500', '-800');
-                                const bgColorClass = colorClass.replace('-500', '-100');
-                                
-                                return (
-                                  <div
-                                    key={entry.id}
-                                    className={`group relative ${bgColorClass} ${textColorClass} text-xs p-2 rounded-lg cursor-pointer hover:shadow-md transition-all duration-200 border-l-4 ${colorClass.replace('bg-', 'border-')}`}
-                                  >
-                                    <div className="truncate text-xs opacity-90 font-bold">
-                                      {entry.employee.fullName}
-                                    </div>                              
-                                    <div className="font-semibold truncate text-xs">
-                                      {entry.project.name}
-                                    </div>
-                                    <div className="truncate text-xs opacity-70">
-                                      {entry.task}
-                                    </div>
-                                    <div className="text-xs opacity-75 font-medium">
-                                      {new Date(entry.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(entry.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                    </div>
-                                    <div className="text-xs opacity-75">
-                                      {entry.duration.toFixed(1)}h
-                                    </div>
-                                    
-                                    {isToday && (
-                                      <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 flex space-x-1 transition-opacity">
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            editEntry(entry);
-                                          }}
-                                          className="p-1 bg-white rounded shadow-sm hover:bg-gray-100 transition-colors"
-                                        >
-                                          <Edit3 className="w-3 h-3 text-gray-600" />
-                                        </button>
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            deleteEntry(entry.id);
-                                          }}
-                                          className="p-1 bg-white rounded shadow-sm hover:bg-gray-100 transition-colors"
-                                        >
-                                          <Trash2 className="w-3 h-3 text-red-600" />
-                                        </button>
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          ) : (
-            // Monthly View
-            <>
-              {/* Month Header */}
-              <div className="grid grid-cols-7 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
-                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
-                  <div key={day} className="p-4 text-center font-bold text-gray-700 border-r last:border-r-0 border-gray-200">
-                    {day}
+              return (
+                <div key={index} className={`p-4 text-center border-r last:border-r-0 border-gray-200 ${
+                  isToday ? 'bg-gradient-to-b from-blue-100 to-blue-50' : ''
+                }`}>
+                  <div className={`font-bold text-lg ${
+                    isToday ? 'text-blue-700' : 'text-gray-700'
+                  }`}>
+                    {dayNames[date.getDay()]}
                   </div>
-                ))}
-              </div>
-
-              {/* Month Grid */}
-              <div className="grid grid-cols-7">
-                {displayDates.map((date, index) => {
-                  const isCurrentMonth = !dateRangeFilter.from && !dateRangeFilter.to ? 
-                    date.getMonth() === currentDate.getMonth() : true;
-                  const isToday = date.toDateString() === today;
-                  const entries = getEntriesForDate(date);
-                  const totalHours = entries.reduce((total, entry) => total + entry.duration, 0);
-                  
-                  return (
-                    <div
-                      key={index}
-                      className={`border-r last:border-r-0 border-b last:border-b-0 p-2 min-h-[120px] ${
-                        !isCurrentMonth ? 'bg-gray-50 opacity-50' : ''
-                      } ${
-                        isToday ? 'bg-gradient-to-b from-blue-100 to-blue-50' : ''
-                      }`}
-                    >
-                      <div className={`text-sm font-semibold mb-2 flex items-center justify-between ${
-                        isToday ? 'text-blue-700' : isCurrentMonth ? 'text-gray-900' : 'text-gray-500'
-                      }`}>
-                        <span>{date.getDate()}</span>
-                        {totalHours > 0 && (
-                          <span className={`text-xs px-2 py-1 rounded-full ${
-                            isToday ? 'bg-blue-200 text-blue-800' : 'bg-gray-200 text-gray-700'
-                          }`}>
-                            {totalHours.toFixed(1)}h
-                          </span>
-                        )}
-                      </div>
-                      
-                      <div className="space-y-1">
-                        {entries.slice(0, 3).map((entry) => {
-                          const colorClass = getProjectColor(entry.project.name);
-                          const bgColorClass = colorClass.replace('-500', '-100');
-                          const textColorClass = colorClass.replace('bg-', 'text-').replace('-500', '-700');
-                          
-                          return (
-                            <div
-                              key={entry.id}
-                              className={`${bgColorClass} ${textColorClass} text-xs p-1 rounded cursor-pointer hover:shadow-sm transition-all duration-200 border-l-2 ${colorClass.replace('bg-', 'border-')}`}
-                            >
-                              <div className="font-bold opacity-90 text-xs">{entry.employee.fullName}</div>
-                              <div className="font-medium truncate">{entry.project.name}</div>
-                              <div className="truncate opacity-75">{entry.task}</div>
-                              <div className="text-xs opacity-60">{entry.duration.toFixed(1)}h</div>
-                            </div>
-                          );
-                        })}
-                        {entries.length > 3 && (
-                          <button
-                            className="text-xs text-blue-600 hover:text-blue-800 font-medium pl-1 hover:underline transition-colors"
-                          >
-                            +{entries.length - 3} more
-                          </button>
-                        )}
-                      </div>
+                  <div className={`text-sm ${
+                    isToday ? 'text-blue-600' : 'text-gray-500'
+                  }`}>
+                    {date.getDate()}
+                  </div>
+                  {totalHours > 0 && (
+                    <div className={`text-xs font-medium mt-1 px-2 py-1 rounded-full ${
+                      isToday ? 'bg-blue-200 text-blue-800' : 'bg-gray-200 text-gray-700'
+                    }`}>
+                      {totalHours.toFixed(1)}h
                     </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Calendar Body with Time Entries */}
+          <div className="grid grid-cols-[80px_repeat(7,minmax(0,1fr))] max-h-[600px] overflow-y-auto relative">
+            {/* Time markers */}
+            <div className="absolute top-0 left-0 bottom-0 w-[80px] bg-gray-50 border-r border-gray-200 z-10">
+              {[...Array(13)].map((_, hourIndex) => {
+                const hour = 9 + hourIndex;
+                const displayHour = hour > 12 ? `${hour - 12}:00p` : `${hour}:00a`;
+                return (
+                  <div key={hour} className="text-center font-semibold text-gray-500 text-xs py-2" style={{ height: '90px' }}>
+                    {displayHour}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Day columns */}
+            {displayDates.map((date, dayIndex) => {
+              const entries = getCalendarEntries(date);
+              const isToday = date.toDateString() === today;
+
+              return (
+                <div
+                  key={dayIndex}
+                  className={`p-2 border-r last:border-r-0 border-gray-200 min-h-[600px] relative ${
+                    isToday ? 'bg-blue-50/30' : ''
+                  }`}
+                >
+                  {entries.map((entry) => {
+                    const colorClass = getProjectColor(entry.project.name);
+                    const textColorClass = colorClass.replace('bg-', 'text-').replace('-500', '-800');
+                    const bgColorClass = colorClass.replace('-500', '-100');
+                    
+                    return (
+                      <div
+                        key={entry.id}
+                        className={`group absolute rounded-lg p-2 text-xs cursor-pointer hover:shadow-lg transition-all duration-200 border-l-4 z-20 ${bgColorClass} ${textColorClass} ${colorClass.replace('bg-', 'border-')}`}
+                        style={{ top: entry.style.top, height: entry.style.height, left: entry.style.left, width: entry.style.width }}
+                      >
+                        <div className="truncate text-xs opacity-90 font-bold">
+                          {entry.employee.fullName}
+                        </div>
+                        <div className="font-semibold truncate text-xs">
+                          {entry.project.name}
+                        </div>
+                        <div className="truncate text-xs opacity-70">
+                          {entry.task}
+                        </div>
+                        <div className="text-xs opacity-75 font-medium">
+                          {new Date(entry.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(entry.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                        
+                        {isToday && (
+                          <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 flex space-x-1 transition-opacity">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                editEntry(entry);
+                              }}
+                              className="p-1 bg-white rounded shadow-sm hover:bg-gray-100 transition-colors"
+                            >
+                              <Edit3 className="w-3 h-3 text-gray-600" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteEntry(entry.id);
+                              }}
+                              className="p-1 bg-white rounded shadow-sm hover:bg-gray-100 transition-colors"
+                            >
+                              <Trash2 className="w-3 h-3 text-red-600" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
         </div>
       ) : (
         // New Timesheet Hours Table
@@ -963,17 +1057,13 @@ const filteredEntries = Array.isArray(timeEntries)
                   <td className="px-6 py-4 font-bold text-gray-900 sticky left-0 bg-gray-100 z-10">
                     Team Total
                   </td>
-                  {displayDates.map((date, dayIndex) => {
-                    const dayTotal = teamTimesheetData.reduce((sum, data) => sum + data.dailyHours[dayIndex], 0);
-                    const isToday = date.toDateString() === today;
-                    return (
-                      <td key={dayIndex} className={`px-3 py-4 text-center font-bold ${
-                        isToday ? 'text-blue-700 bg-blue-100' : 'text-gray-900'
-                      }`}>
-                        {dayTotal > 0 ? `${dayTotal.toFixed(1)}h` : '-'}
-                      </td>
-                    );
-                  })}
+                  {teamTimesheetData.map((data, _employeeIndex) => (
+                    <td key={_employeeIndex} className={`px-3 py-4 text-center font-bold ${
+                      displayDates[_employeeIndex].toDateString() === today ? 'text-blue-700 bg-blue-100' : 'text-gray-900'
+                    }`}>
+                      {data.dailyHours[_employeeIndex] > 0 ? `${data.dailyHours[_employeeIndex].toFixed(1)}h` : '-'}
+                    </td>
+                  ))}
                   <td className="px-6 py-4 text-center font-bold text-blue-700 text-xl bg-blue-100 sticky right-0 z-10 border-l border-gray-300">
                     {teamTimesheetData.reduce((sum, data) => sum + data.totalHours, 0).toFixed(1)}h
                   </td>
@@ -1002,10 +1092,175 @@ const filteredEntries = Array.isArray(timeEntries)
           entryToEdit={editingEntry}
         />
       )}
+
+         {showBulkForm && (
+        <div className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[95vh] overflow-hidden">
+            <div className="flex justify-between items-center p-6 border-b border-gray-200">
+              <h3 className="text-2xl font-bold text-gray-900">Bulk Add Time Entries</h3>
+              <button onClick={() => setShowBulkForm(false)} className="p-2 rounded-full hover:bg-gray-100 transition-colors">
+                <X className="w-5 h-5 text-gray-600" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
+              <div className="space-y-4">
+                {bulkEntries.map((entry, index) => (
+                  <div key={index} className="border border-gray-200 rounded-xl p-4 bg-gray-50">
+                    <div className="flex justify-between items-center mb-4">
+                      <h4 className="text-lg font-semibold text-gray-800">Entry #{index + 1}</h4>
+                      {bulkEntries.length > 1 && (
+                        <button
+                          onClick={() => removeBulkEntry(index)}
+                          className="text-red-500 hover:text-red-700 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Employee</label>
+                        <select
+                          value={entry.employeeId}
+                          onChange={(e) => handleBulkChange(index, 'employeeId', e.target.value)}
+                          className="mt-2 p-2 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        >
+                          {employees.map(employee => (
+                            <option key={employee.id} value={employee.id}>{employee.fullName}</option>
+                          ))}
+                        </select>
+                      </div>
+                      
+                       <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Project *
+            </label>
+            <select
+              value={entry.projectId}
+             onChange={(e) => handleBulkChange(index, 'projectId', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              required
+            >
+              <option value="">Select project</option>
+              {projects.map(project => (
+                <option key={project.id} value={project.id}>{project.name}</option>
+              ))}
+            </select>
+          </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Task</label>
+                        <input
+                          type="text"
+                          value={entry.task}
+                          onChange={(e) => handleBulkChange(index, 'task', e.target.value)}
+                          className="mt-2 p-2 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                          placeholder="Task name"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Date</label>
+                        <input
+                          type="date"
+                          value={entry.date}
+                          readOnly
+                          onChange={(e) => handleBulkChange(index, 'date', e.target.value)}
+                          className="mt-2 p-2 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Start Time</label>
+                        <input
+                          type="time"
+                          value={entry.startTime}
+                          onChange={(e) => handleBulkChange(index, 'startTime', e.target.value)}
+                          className="mt-2 p-2 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">End Time</label>
+                        <input
+                          type="time"
+                          value={entry.endTime}
+                          onChange={(e) => handleBulkChange(index, 'endTime', e.target.value)}
+                          className="mt-2 p-2 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="mt-4">
+                      <label className="block text-sm font-medium text-gray-700">Description</label>
+                      <textarea
+                        value={entry.description}
+                        onChange={(e) => handleBulkChange(index, 'description', e.target.value)}
+                        rows={2}
+                        className="mt-2 p-2 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        placeholder="What did you work on?"
+                      />
+                    </div>
+                    
+                    <div className="flex items-center justify-between mt-4">
+                      <label className="flex items-center text-sm text-gray-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={entry.billable}
+                          onChange={(e) => handleBulkChange(index, 'billable', e.target.checked)}
+                          className="rounded text-blue-500 border-gray-300 shadow-sm focus:ring-blue-500"
+                        />
+                        <span className="ml-2">Billable</span>
+                      </label>
+                      <div className="text-sm font-medium text-gray-500">
+                        Duration: <span className="font-bold text-gray-900">{entry.duration.toFixed(2)}h</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              <div className="mt-6">
+                <button
+                  onClick={addBulkEntry}
+                  className="flex items-center px-4 py-2 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-100 transition-colors"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Another Entry
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-6 border-t border-gray-200 flex justify-end space-x-2">
+              <button
+                onClick={() => setShowBulkForm(false)}
+                className="px-6 py-2 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveBulkEntries}
+                className="px-6 py-2 bg-purple-500 text-white rounded-xl hover:bg-purple-600 transition-colors shadow-md"
+              >
+                <Save className="inline-block w-4 h-4 mr-2" />
+                Save All Entries
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
-function setAutoStartTime(now: Date) {
-  throw new Error('Function not implemented.');
+function calculateDuration(startTime: string, endTime: string): number {
+  if (!startTime || !endTime) return 0;
+  const [sh, sm] = startTime.split(':').map(Number);
+  const [eh, em] = endTime.split(':').map(Number);
+  const start = sh * 60 + sm;
+  const end = eh * 60 + em;
+  const diff = (end - start) / 60;
+  return diff > 0 ? diff : 0;
 }
 

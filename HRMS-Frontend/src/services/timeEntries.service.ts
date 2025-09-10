@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { TimeEntryForm } from '../components/pages/TimeTrackingPage';
 
 const API_BASE_URL = 'http://localhost:5000/api';
 
@@ -56,7 +57,17 @@ export const fetchTimeEntries = async (): Promise<TimeEntry[]> => {
     throw error;
   }
 };
+export const createManyTimeEntries = async (entries: TimeEntryForm[]): Promise<TimeEntry[]> => {
+  try {
+    const response = await axios.post(`${API_BASE_URL}/time-entries/bulk`, { entries });
 
+    // ✅ backend returns { success, message, data: createdEntries }
+    return response.data.data;
+  } catch (error) {
+    console.error("Error creating bulk time entries:", error);
+    throw error;
+  }
+};
 export const fetchProjects = async (): Promise<Project[]> => {
   try {
     const response = await axios.get(`${API_BASE_URL}/projects`);

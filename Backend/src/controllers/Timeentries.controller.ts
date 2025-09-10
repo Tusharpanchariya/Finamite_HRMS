@@ -38,8 +38,10 @@ export const createTimeEntry = async (req: Request, res: Response) => {
 // =============================
 export const createBulkTimeEntries = async (req: Request, res: Response) => {
   try {
+    console.log("Incoming bulk request body:", req.body); // 👈 Debug log
+
     const { entries } = req.body;
-    if (!Array.isArray(entries) || entries.length === 0) {
+    if (!entries || !Array.isArray(entries) || entries.length === 0) {
       return res.status(400).json({ success: false, message: "Entries array is required" });
     }
 
