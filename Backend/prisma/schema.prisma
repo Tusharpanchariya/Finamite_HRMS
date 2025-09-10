@@ -1,0 +1,322 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String    @id @default(uuid())
+  name             String
+  email            String    @unique
+  password         String
+  phoneNumber      String    @unique
+  paymentStatus    String
+  resetToken       String?
+  resetTokenExpiry DateTime?
+
+  roles            Role[]    @relation("UserRoles") // Many-to-Many: User ↔ Role
+  employee         Employee?
+  profile          Profile?
+}
+
+model Role {
+  id          String       @id @default(uuid())
+  name        String       @unique // e.g., Admin, HR, Manager, Employee
+  description String?
+
+  users       User[]       @relation("UserRoles")     // Many-to-Many: Role ↔ User
+  permissions Permission[] @relation("RolePermissions") // Many-to-Many: Role ↔ Permission
+}
+
+model Permission {
+  id          String   @id @default(uuid())
+  action      String   // e.g., "create_attendance", "approve_leave"
+  description String?
+
+  roles       Role[]   @relation("RolePermissions") // Many-to-Many: Permission ↔ Role
+}
+model Profile {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  fullName  String
+  role      String
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model Company {
+  id       String    @id @default(uuid())
+  name     String
+  domain   String    @unique
+  size     String
+  industry String
+  category String
+  profiles Profile[]
+}
+
+model Department {
+  id            Int        @id @default(autoincrement())
+  name          String     @unique
+  manager      String?
+  description   String?
+  location      String?      
+  establishDate DateTime?    
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  employees     Employee[]
+
+  Training      Training[]
+}
+
+model Employee {
+  id               Int            @id @default(autoincrement())
+  createdAt        DateTime       @default(now())
+  fullName         String
+  joiningDate      DateTime
+  contactNumber    String
+  email            String?        @unique
+  address          String?
+  city             String?
+  dateOfBirth      DateTime?
+  departmentId     Int?
+  designation      String?
+  emergencyContact String?
+  employeeType     EmployeeType?
+  pinCode          String?
+  status           EmployeeStatus @default(ACTIVE) // already exists
+  trainingStatus   TrainingStatus?
+  updatedAt        DateTime       @updatedAt
+  state            String?
+  photo            String?
+  userId           String?        @unique
+  attendances      Attendance[]
+  department       Department?    @relation(fields: [departmentId], references: [id])
+  user             User?          @relation(fields: [userId], references: [id])
+  leaves           Leave[]
+  Payroll          Payroll[]
+  statutoryDetails EmployeeStatutoryDetails?
+  Training         Training[]      @relation("EmployeeTrainings")
+  TimeEntry        TimeEntry[]
+
+  // New field for separate active/inactive status
+  activeStatus     ActiveStatus    @default(ACTIVE)
+}
+
+enum ActiveStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model EmployeeStatutoryDetails {
+  id             String    @id @default(uuid())
+  employeeId     Int       @unique
+  employee       Employee  @relation(fields: [employeeId], references: [id])
+
+  employeeCode   String
+  panNumber      String
+  aadhaarNumber  String
+  bankAccount    String
+  ifscCode       String
+  uanNumber      String
+  esicNumber     String
+
+  bankName       String?   // ✅ Added new field (optional, so migration won’t break)
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+model Leave {
+  id             Int         @id @default(autoincrement())
+  employeeId     Int
+  startDate      DateTime
+  endDate        DateTime
+  leaveType      LeaveType
+  leaveReason    String
+  approvalStatus LeaveStatus @default(PENDING)
+  totalDays      Int
+  approvedBy     Int?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  employee       Employee    @relation(fields: [employeeId], references: [id])
+}
+
+
+model Attendance {
+  id              Int               @id @default(autoincrement())
+  employeeId      Int
+  status          AttendanceStatus
+  attendanceDate  DateTime          @db.Date
+  inTime          DateTime?
+  outTime         DateTime?
+  totalHours      Float?
+  overtimeHours   Float?            // Overtime in hours (can be calculated)
+  isBiometric     Boolean           @default(false) // Whether it came from biometric or manual
+  remarks         String?           // Optional: For manual corrections or notes
+  location        String?           // Optional: Capture location for remote employees
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  employee        Employee          @relation(fields: [employeeId], references: [id])
+  Payroll         Payroll[]
+
+  @@index([employeeId])
+  @@index([attendanceDate])
+  @@unique([employeeId, attendanceDate]) // Prevents duplicate attendance entries per employee per day
+}
+enum EmployeeType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  RESIGNED
+  ON_LEAVE
+}
+
+enum TrainingStatus {
+  COMPLETED
+  IN_PROGRESS
+  NOT_STARTED
+  REQUIRED
+  NOT_REQUIRED
+}
+
+enum LeaveType {
+  SICK
+  CASUAL
+  EARNED
+  MATERNITY
+  PATERNITY
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  HALF_DAY
+  LEAVE
+  HOLIDAY
+} 
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Payroll {
+  id         Int      @id @default(autoincrement())
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  employeeId Int
+
+  baseSalary     Float
+  allowances     Float @default(0)
+  deductions     Float @default(0)
+  advancePayment Float @default(0)
+
+  netSalary Float // Will be calculated in controller
+
+  paymentStatus PaymentStatus @default(PENDING)
+  paymentDate   DateTime? // Only filled when status = PAID
+
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  Attendance   Attendance? @relation(fields: [attendanceId], references: [id])
+  attendanceId Int?
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+model Training {
+  trainingId     Int       @id @default(autoincrement())
+  employeeId     Int
+  trainerType    TrainerType
+  trainerName    String    @db.VarChar(100)
+  mode           TrainingMode
+  trainingTopic  String
+  startDate      DateTime
+  endDate        DateTime
+  certificate    CertificateStatus
+  departmentId   Int?
+  departmentName String?
+  managerId      Int?
+
+  // Relations
+  employee       Employee  @relation("EmployeeTrainings", fields: [employeeId], references: [id])
+  department     Department? @relation(fields: [departmentId], references: [id])
+  // manager        Employee? @relation("ManagerTrainings", fields: [managerId], references: [id])
+
+  @@index([employeeId])
+  @@index([departmentId])
+  @@index([managerId])
+}
+
+enum TrainerType {
+  Internal
+  External
+}
+
+enum TrainingMode {
+  Online
+  Offline
+}
+
+enum CertificateStatus {
+  Required
+  NotRequired
+}
+
+model Project {
+  id          Int       @id @default(autoincrement())
+  name        String
+  description String?
+  startDate   DateTime
+  endDate     DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+
+  TimeEntry TimeEntry[]
+}
+
+model TimeEntry {
+  id          Int       @id @default(autoincrement())
+  employeeId  Int
+  projectId   Int
+  task        String?
+  date        DateTime
+  startTime   DateTime
+  endTime     DateTime
+  duration    Float
+  description String?
+
+  billable    Boolean   @default(true) // <-- New field
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  employee    Employee  @relation(fields: [employeeId], references: [id])
+  project     Project   @relation(fields: [projectId], references: [id])
+
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+ }
