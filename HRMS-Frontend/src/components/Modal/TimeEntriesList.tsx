@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Edit2, Trash2, Clock, DollarSign } from 'lucide-react';
+import { Edit2, Trash2, Clock, IndianRupee  } from 'lucide-react';
 
 interface TimeEntry {
   id: string;
@@ -85,7 +85,7 @@ export const TimeEntriesList: React.FC<TimeEntriesListProps> = ({
                       : 'bg-gray-100 text-gray-600'
                   }`}>
                     {entry.billable ? (
-                      <><DollarSign className="w-3 h-3 inline mr-1" />BILLABLE</>
+                      <><IndianRupee  className="w-3 h-3 inline mr-1" />BILLABLE</>
                     ) : (
                       'NON-BILLABLE'
                     )}

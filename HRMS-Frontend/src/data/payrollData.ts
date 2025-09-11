@@ -1,6 +1,15 @@
 import { PayrollRecord, PayrollComponent, PayrollSettings } from '../types';
 import { extendedMockEmployees, mockAttendanceRecords } from './mockData';
 
+// ✅ Currency Formatter (always INR $)
+export const formatCurrency = (amount: number): string => {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",     // 👈 This ensures $ instead of $
+    maximumFractionDigits: 0,
+  }).format(amount);
+};
+
 export const defaultPayrollComponents: PayrollComponent[] = [
   {
     id: '1',

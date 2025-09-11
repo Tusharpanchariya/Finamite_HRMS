@@ -36,9 +36,17 @@ export const createTimeEntry = async (req: Request, res: Response) => {
 // =============================
 // CREATE BULK TIME ENTRIES
 // =============================
+const parseDate = (value: any) => {
+  const date = new Date(value);
+  if (isNaN(date.getTime())) {
+    throw new Error(`Invalid date format: ${value}`);
+  }
+  return date;
+};
+
 export const createBulkTimeEntries = async (req: Request, res: Response) => {
   try {
-    console.log("Incoming bulk request body:", req.body); // 👈 Debug log
+    console.log("Incoming bulk request body:", req.body);
 
     const { entries } = req.body;
     if (!entries || !Array.isArray(entries) || entries.length === 0) {
@@ -52,9 +60,9 @@ export const createBulkTimeEntries = async (req: Request, res: Response) => {
             employeeId: entry.employeeId,
             projectId: entry.projectId,
             task: entry.task,
-            date: new Date(entry.date),
-            startTime: new Date(entry.startTime),
-            endTime: new Date(entry.endTime),
+            date: parseDate(entry.date),
+            startTime: parseDate(entry.startTime),
+            endTime: parseDate(entry.endTime),
             duration: entry.duration ?? 0,
             description: entry.description,
             billable: entry.billable ?? true,
@@ -73,8 +81,8 @@ export const createBulkTimeEntries = async (req: Request, res: Response) => {
     return res.status(500).json({ success: false, message: "Failed to create bulk time entries", error: error.message });
   }
 };
-
-// =============================
+     
+// ============================= 
 // GET ALL TIME ENTRIES
 // =============================
 export const getTimeEntries = async (_req: Request, res: Response) => {

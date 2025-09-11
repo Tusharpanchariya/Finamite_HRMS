@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Trash2, Save, Settings, DollarSign } from 'lucide-react';
+import { X, Plus, Trash2, Save, Settings, IndianRupee  } from 'lucide-react';
 import { PayrollSettings, PayrollComponent } from '../../types';
 
 interface PayrollSettingsModalProps {
@@ -121,7 +121,7 @@ export const PayrollSettingsModal: React.FC<PayrollSettingsModalProps> = ({
           {/* Basic Settings */}
           <div className="bg-gray-50 rounded-lg p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <DollarSign className="w-5 h-5 mr-2 text-blue-600" />
+              <IndianRupee  className="w-5 h-5 mr-2 text-blue-600" />
               Basic Payroll Settings
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

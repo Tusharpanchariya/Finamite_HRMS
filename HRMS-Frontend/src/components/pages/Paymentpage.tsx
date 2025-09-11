@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, Mail, Building2, CreditCard, DollarSign, Zap, ArrowRight, CheckCircle, Star } from 'lucide-react';
+import { User, Mail, Building2, CreditCard, IndianRupee , Zap, ArrowRight, CheckCircle, Star } from 'lucide-react';
 
 export const Paymentpage: React.FC = () => {
   const [formData, setFormData] = useState({
@@ -293,7 +293,7 @@ export const Paymentpage: React.FC = () => {
 
                     <div className="space-y-2">
                       <label htmlFor="paymentAmount" className="flex items-center text-sm font-bold text-gray-700 uppercase tracking-wider">
-                        <DollarSign className="w-4 h-4 mr-2 text-[#1A6E6E]" />
+                        <IndianRupee  className="w-4 h-4 mr-2 text-[#1A6E6E]" />
                         Amount
                       </label>
                       <input

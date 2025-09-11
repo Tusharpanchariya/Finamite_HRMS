@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { 
-  DollarSign, 
+  IndianRupee , 
   Calculator, 
   Calendar, 
   Users, 
@@ -63,13 +63,13 @@ export const PayrollPage: React.FC = () => {
     );
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0
-    }).format(amount);
-  };
+ const formatCurrency = (amount: number) => {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    minimumFractionDigits: 0
+  }).format(amount);
+};
 
   const handleEditPayroll = (record: PayrollRecord) => {
     setEditingRecord(record);
@@ -256,7 +256,7 @@ export const PayrollPage: React.FC = () => {
                 </div>
               </div>
               <div className="p-3 bg-green-200 rounded-lg">
-                <DollarSign className="w-6 h-6 text-green-700" />
+                <IndianRupee  className="w-6 h-6 text-green-700" />
               </div>
             </div>
           </Card>

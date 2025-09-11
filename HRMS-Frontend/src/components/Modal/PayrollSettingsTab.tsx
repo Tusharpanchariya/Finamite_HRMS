@@ -3,7 +3,7 @@ import {
   Plus, 
   Trash2, 
   Save, 
-  DollarSign, 
+  IndianRupee , 
   Settings as SettingsIcon,
   Calendar,
   Calculator,
@@ -161,7 +161,7 @@ export const PayrollSettingsTab: React.FC<PayrollSettingsTabProps> = ({
               <option value="EUR">EUR (€)</option>
               <option value="GBP">GBP (£)</option>
               <option value="CAD">CAD (C$)</option>
-              <option value="INR">INR (₹)</option>
+              <option value="INR">INR ($)</option>
             </select>
           </div>
         </div>
@@ -172,7 +172,7 @@ export const PayrollSettingsTab: React.FC<PayrollSettingsTabProps> = ({
         <div className="flex items-center justify-between mb-6">
           <div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2 flex items-center">
-              <DollarSign className="w-5 h-5 mr-2 text-green-600" />
+              <IndianRupee  className="w-5 h-5 mr-2 text-green-600" />
               Default Allowances
             </h3>
             <p className="text-sm text-gray-500">Configure default allowances that will be applied to all new payroll records</p>
@@ -245,7 +245,7 @@ export const PayrollSettingsTab: React.FC<PayrollSettingsTabProps> = ({
           ))}
           {localSettings.defaultAllowances.length === 0 && (
             <div className="text-center py-8 text-gray-500">
-              <DollarSign className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+              <IndianRupee  className="w-12 h-12 mx-auto mb-4 text-gray-300" />
               <p>No default allowances configured</p>
               <p className="text-sm">Click "Add Allowance" to create your first default allowance</p>
             </div>
@@ -258,7 +258,7 @@ export const PayrollSettingsTab: React.FC<PayrollSettingsTabProps> = ({
         <div className="flex items-center justify-between mb-6">
           <div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2 flex items-center">
-              <DollarSign className="w-5 h-5 mr-2 text-red-600" />
+              <IndianRupee  className="w-5 h-5 mr-2 text-red-600" />
               Default Deductions
             </h3>
             <p className="text-sm text-gray-500">Configure default deductions that will be applied to all new payroll records</p>
@@ -331,7 +331,7 @@ export const PayrollSettingsTab: React.FC<PayrollSettingsTabProps> = ({
           ))}
           {localSettings.defaultDeductions.length === 0 && (
             <div className="text-center py-8 text-gray-500">
-              <DollarSign className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+              <IndianRupee  className="w-12 h-12 mx-auto mb-4 text-gray-300" />
               <p>No default deductions configured</p>
               <p className="text-sm">Click "Add Deduction" to create your first default deduction</p>
             </div>

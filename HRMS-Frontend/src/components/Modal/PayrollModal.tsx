@@ -428,19 +428,19 @@ export const PayrollModal: React.FC<PayrollModalProps> = ({
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               <div>
                 <p className="text-gray-600">Base Salary</p>
-                <p className="font-semibold text-lg">${baseSalary.toLocaleString()}</p>
+                <p className="font-semibold text-lg">₹{baseSalary.toLocaleString()}</p>
               </div>
               <div>
                 <p className="text-green-600">+ Allowances</p>
-                <p className="font-semibold text-lg text-green-600">+${(totalAllowances + overtimePay).toLocaleString()}</p>
+                <p className="font-semibold text-lg text-green-600">+₹{(totalAllowances + overtimePay).toLocaleString()}</p>
               </div>
               <div>
                 <p className="text-red-600">- Deductions</p>
-                <p className="font-semibold text-lg text-red-600">-${totalDeductions.toLocaleString()}</p>
+                <p className="font-semibold text-lg text-red-600">-₹{totalDeductions.toLocaleString()}</p>
               </div>
               <div className="bg-blue-100 p-3 rounded-lg">
                 <p className="text-blue-600">Net Salary</p>
-                <p className="font-bold text-xl text-blue-600">${netSalary.toLocaleString()}</p>
+                <p className="font-bold text-xl text-blue-600">₹{netSalary.toLocaleString()}</p>
               </div>
             </div>
           </div>

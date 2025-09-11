@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Download, Calendar, User, DollarSign, Clock, TrendingUp, TrendingDown } from 'lucide-react';
+import { X, Download, Calendar, User, IndianRupee , Clock, TrendingUp, TrendingDown } from 'lucide-react';
 import { PayrollRecord } from '../../types';
 
 interface PayrollDetailsModalProps {
@@ -188,7 +188,7 @@ export const PayrollDetailsModal: React.FC<PayrollDetailsModalProps> = ({
           {/* Salary Summary */}
           <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <DollarSign className="w-5 h-5 mr-2" />
+              <IndianRupee  className="w-5 h-5 mr-2" />
               Salary Summary
             </h3>
             <div className="space-y-4">

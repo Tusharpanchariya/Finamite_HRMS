@@ -9,7 +9,7 @@ import {
   UserCheck,
   Clock,
   Building2,
-  DollarSign,
+  IndianRupee ,
   Award
 } from 'lucide-react';
 
@@ -25,7 +25,7 @@ const menuItems = [
   { icon: UserCheck, label: 'Attendance' },
   { icon: Calendar, label: 'Leave Management' },
   { icon: Clock, label: 'Time Tracking' },
-  { icon: DollarSign, label: 'Payroll' },
+  { icon: IndianRupee , label: 'Payroll' },
   { icon: BarChart3, label: 'Reports' },
   { icon: Award, label: 'Performance' },
   { icon: Building2, label: 'Departments' },

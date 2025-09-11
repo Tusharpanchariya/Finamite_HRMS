@@ -106,8 +106,9 @@ export const TimeTrackingPage: React.FC = () => {
 // Ensure entries is always an array
 const entries: TimeEntry[] = Array.isArray(entriesResponse)
   ? entriesResponse
-  : (entriesResponse?.data as TimeEntry[]) || [];
-
+  : (entriesResponse && Array.isArray((entriesResponse as any).data))
+    ? (entriesResponse as any).data
+    : [];
 setTimeEntries(entries);
         setProjects(fetchedProjects);
         setEmployees(fetchedEmployees);
@@ -194,41 +195,48 @@ const getProjectColor = (project: string): string => {
     return dates;
   };
 
-  const getFilteredDateRange = () => {
-    if (dateRangeFilter.from && dateRangeFilter.to) {
-      const fromDate = new Date(dateRangeFilter.from);
-      const toDate = new Date(dateRangeFilter.to);
-      const dates = [];
-      const currentDate = fromDate;
-      while (currentDate <= toDate) {
-        dates.push(new Date(currentDate));
-        currentDate.setDate(currentDate.getDate() + 1);
-      }
-      return dates;
+ const getFilteredDateRange = () => {
+  if (dateRangeFilter.from && dateRangeFilter.to) {
+    const fromDate = new Date(dateRangeFilter.from);
+    const toDate = new Date(dateRangeFilter.to);
+    const dates: Date[] = [];
+    let currentDate = new Date(fromDate);
+
+    while (currentDate <= toDate) {
+      dates.push(new Date(currentDate)); // ✅ always clone
+      currentDate.setDate(currentDate.getDate() + 1);
     }
-    return viewMode === 'week' ? getWeekDates(currentDate) : getMonthDates(currentDate);
-  };
+
+    return dates;
+  }
+
+  return viewMode === 'week' 
+    ? getWeekDates(currentDate) 
+    : getMonthDates(currentDate);
+};
 
   const displayDates = getFilteredDateRange();
   const today = new Date().toDateString();
-  
-  const saveTimeEntry = async (entryData: any) => {
-    try {
-      if (editingEntry) {
-        await updateTimeEntry(editingEntry.id, entryData);
-      } else {
-        await createTimeEntry(entryData);
-      }
-      const updatedEntries = await fetchTimeEntries();
-      setTimeEntries(updatedEntries);
-      setEditingEntry(null);
-      setShowAddForm(false);
-    } catch (error) {
-      console.error("Failed to save time entry:", error);
-      console.log('Failed to save time entry. Please try again.');
+const saveTimeEntry = async (entryData: any) => {
+  try {
+    if (editingEntry && !(editingEntry as any).isNew) {
+      await updateTimeEntry(editingEntry.id, entryData);
+    } else {
+      const { isNew, ...entryWithoutIsNew } = entryData;
+      await createTimeEntry(entryWithoutIsNew);
     }
-  };
-
+    const updatedEntriesResponse = await fetchTimeEntries();
+    const updatedEntries = Array.isArray(updatedEntriesResponse?.data)
+      ? updatedEntriesResponse.data
+      : [];
+    setTimeEntries(updatedEntries);
+    setEditingEntry(null);
+    setShowAddForm(false);
+  } catch (error) {
+    console.error("Failed to save time entry:", error);
+    console.log('Failed to save time entry. Please try again.');
+  }
+};
   const editEntry = (entry: TimeEntry) => {
     const entryDate = new Date(entry.date);
     const todayDate = new Date();
@@ -242,20 +250,21 @@ const getProjectColor = (project: string): string => {
     setShowAddForm(true);
   };
 
-  const deleteEntry = async (id: number) => {
-    // NOTE: `window.confirm` is used here because a custom modal is not provided in the user's code.
-    // In a real app, this should be replaced with a custom modal UI.
-    if (window.confirm('Are you sure you want to delete this time entry?')) {
-      try {
-        await deleteTimeEntry(id);
-        const updatedEntries = await fetchTimeEntries();
-        setTimeEntries(updatedEntries);
-      } catch (error) {
-        console.error("Failed to delete time entry:", error);
-        console.log('Failed to delete time entry. Please try again.');
-      }
+const deleteEntry = async (id: number) => {
+  if (window.confirm('Are you sure you want to delete this time entry?')) {
+    try {
+      await deleteTimeEntry(id);
+      const updatedEntriesResponse = await fetchTimeEntries();
+      const updatedEntries = Array.isArray(updatedEntriesResponse?.data)
+        ? updatedEntriesResponse.data
+        : [];
+      setTimeEntries(updatedEntries);
+    } catch (error) {
+      console.error("Failed to delete time entry:", error);
+      console.log('Failed to delete time entry. Please try again.');
     }
-  };
+  }
+};
   const [autoStartTime, setAutoStartTime] = useState<Date | null>(null);
   const startTimer = () => {
     const now = new Date();
@@ -274,57 +283,67 @@ const getProjectColor = (project: string): string => {
       intervalRef.current = null;
     }
   };
-  const stopTimer = () => {
-    const end = new Date();
-    if (!timerStart) {
-      setIsTimerRunning(false);
-      setCurrentTimer(0);
-      return;
-    }
-    const durationSeconds = Math.floor((end.getTime() - timerStart.getTime()) / 1000);
-    const durationHours = Number((durationSeconds / 3600).toFixed(2));
-
-    const employeeId = selectedEmployee !== 'all' ? Number(selectedEmployee) : (employees[0]?.id ?? 0);
-    const projectId = projects[0]?.id ?? 0;
-
-    const prefillEntry: TimeEntry = {
-      id: Date.now(),
-      employeeId,
-      projectId,
-      task: '',
-      date: timerStart.toISOString().split('T')[0],
-      startTime: timerStart.toISOString(),
-      endTime: end.toISOString(),
-      duration: durationHours,
-      description: '',
-      billable: false,
-      employee: employees.find((e: any) => e.id === employeeId) || { id: employeeId, fullName: '', role: '' },
-      project: projects.find((p: any) => p.id === projectId) || { id: projectId, name: '' }
-    };
-
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-
+const stopTimer = () => {
+  const end = new Date();
+  if (!timerStart) {
     setIsTimerRunning(false);
-    setCurrentTimer(durationSeconds);
-    setTimerStart(null);
-    if (typeof setAutoStartTime === 'function') setAutoStartTime(null);
+    setCurrentTimer(0);
+    return;
+  }
+  const durationSeconds = Math.floor((end.getTime() - timerStart.getTime()) / 1000);
+  const durationHours = Number((durationSeconds / 3600).toFixed(2));
 
-    setEditingEntry(null);
-    setShowAddForm(true);
-  };
+  const employeeId = selectedEmployee !== 'all' ? Number(selectedEmployee) : (employees[0]?.id ?? 0);
+  const projectId = projects[0]?.id ?? 0;
+
+ const prefillEntry: TimeEntry & { isNew?: boolean } = {
+  id: Date.now(),
+  employeeId,
+  projectId,
+  task: '',
+  date: timerStart.toISOString().split('T')[0],
+  startTime: timerStart.toISOString(),
+  endTime: end.toISOString(),
+  duration: durationHours,
+  description: '',
+  billable: false,
+  employee: employees.find((e: any) => e.id === employeeId) || { id: employeeId, fullName: '', role: '' },
+  project: projects.find((p: any) => p.id === projectId) || { id: projectId, name: '' },
+  isNew: true, // <-- Add this flag
+};
+
+  if (intervalRef.current) {
+    clearInterval(intervalRef.current);
+    intervalRef.current = null;
+  }
+
+  setIsTimerRunning(false);
+  setCurrentTimer(durationSeconds);
+  setTimerStart(null);
+  if (typeof setAutoStartTime === 'function') setAutoStartTime(null);
+
+  setEditingEntry(prefillEntry); // <-- Pass prefillEntry to modal
+  setShowAddForm(true);
+};
 const handleBulkChange = (
   index: number,
   field?: keyof TimeEntryForm,
   value?: any
 ) => {
-  if (!field) return; // ignore invalid calls
+  if (!field) return;
+
   setBulkEntries(prev =>
     prev.map((entry, i) => {
       if (i === index) {
-        const updated = { ...entry, [field]: value };
+        const updated: any = { ...entry };
+
+        // 🔥 Convert employeeId and projectId to number
+        if (field === 'employeeId' || field === 'projectId') {
+          updated[field] = Number(value);
+        } else {
+          updated[field] = value;
+        }
+
         if (field === 'startTime' || field === 'endTime') {
           updated.duration = calculateDuration(updated.startTime, updated.endTime);
         }
@@ -349,8 +368,8 @@ const handleBulkChange = (
   project: '',
   task: '',
   date: new Date().toISOString().split('T')[0],
-  startTime: '',
-  endTime: '',
+ startTime: new Date().toISOString(), // placeholder
+endTime: new Date().toISOString(),   
   duration: 0,
   description: '',
   billable: true,
@@ -394,7 +413,7 @@ const filteredEntries = Array.isArray(timeEntries)
       setCurrentDate(newDate);
     }
   };
-  const saveBulkEntries = async () => {
+const saveBulkEntries = async () => {
   const validEntries = bulkEntries.filter(entry =>
     entry.employeeId && entry.projectId && entry.task && entry.startTime && entry.endTime
   );
@@ -405,17 +424,28 @@ const filteredEntries = Array.isArray(timeEntries)
   }
 
   try {
-    // If your backend has bulk create API:
-    // await createBulkTimeEntries(validEntries);
+    // Prepare payload
+    const payload = validEntries.map(entry => ({
+      ...entry,
+      employeeId: Number(entry.employeeId),
+      projectId: Number(entry.projectId),
+      date: new Date(entry.date).toISOString(),
+      startTime: new Date(`${entry.date}T${entry.startTime}:00Z`).toISOString(),
+      endTime: new Date(`${entry.date}T${entry.endTime}:00Z`).toISOString(),
+    }));
 
-    // Otherwise, loop createTimeEntry for each
-   await Promise.all(validEntries.map(entry => createManyTimeEntries([entry])));
+    // Create all entries
+    await Promise.all(payload.map(entry => createManyTimeEntries([entry])));
 
-    const updatedEntries = await fetchTimeEntries();
-    setTimeEntries(updatedEntries);
+    // Fetch all entries and update state (extract .data)
+    const refreshedEntriesResponse = await fetchTimeEntries();
+    const refreshedEntries = Array.isArray(refreshedEntriesResponse?.data)
+      ? refreshedEntriesResponse.data
+      : [];
+    setTimeEntries(refreshedEntries);
     setShowBulkForm(false);
 
-    // reset
+    // Reset bulk entries
     setBulkEntries([{
       employeeId: 0,
       projectId: 0,
@@ -554,8 +584,8 @@ function addBulkEntry(e: React.MouseEvent<HTMLButtonElement>): void {
       project: '',
       task: '',
       date: new Date().toISOString().split('T')[0],
-      startTime: '',
-      endTime: '',
+      startTime: new Date().toISOString(), // placeholder
+      endTime: new Date().toISOString(),   
       duration: 0,
       description: '',
       billable: true,
@@ -832,8 +862,10 @@ function addBulkEntry(e: React.MouseEvent<HTMLButtonElement>): void {
             <div className="p-4 text-center text-lg font-bold text-gray-700 border-r border-gray-200">
               Time
             </div>
-            {displayDates.map((date, index) => {
-              const isToday = date.toDateString() === today;
+  {displayDates
+  .filter((date) => date && date instanceof Date && !isNaN(date.getTime()))
+  .map((date, index) => {
+    const isToday = date.toDateString() === today;
               const totalHours = getEntriesForDate(date).reduce((sum, entry) => sum + entry.duration, 0);
               const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -879,9 +911,12 @@ function addBulkEntry(e: React.MouseEvent<HTMLButtonElement>): void {
             </div>
 
             {/* Day columns */}
-            {displayDates.map((date, dayIndex) => {
-              const entries = getCalendarEntries(date);
-              const isToday = date.toDateString() === today;
+       {displayDates
+  .filter((date) => date && date instanceof Date && !isNaN(date.getTime()))
+  .map((date, dayIndex) => {
+
+  const entries = getCalendarEntries(date);
+    const isToday = date.toDateString() === today;
 
               return (
                 <div
@@ -971,8 +1006,10 @@ function addBulkEntry(e: React.MouseEvent<HTMLButtonElement>): void {
                   <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 sticky left-0 bg-gray-50 z-10">
                     Employee
                   </th>
-                  {displayDates.map((date, index) => {
-                    const isToday = date.toDateString() === today;
+            {displayDates
+  .filter((date) => date && date instanceof Date && !isNaN(date.getTime()))
+  .map((date, index) => {
+    const isToday = date.toDateString() === today;
                     return (
                       <th key={index} className={`px-3 py-4 text-center text-sm font-semibold min-w-[80px] ${
                         isToday ? 'text-blue-700 bg-blue-50' : 'text-gray-900'
@@ -1052,29 +1089,36 @@ function addBulkEntry(e: React.MouseEvent<HTMLButtonElement>): void {
                   </tr>
                 ))}
               </tbody>
-              <tfoot className="bg-gradient-to-r from-gray-100 to-gray-50 border-t-2 border-gray-300">
-                <tr>
-                  <td className="px-6 py-4 font-bold text-gray-900 sticky left-0 bg-gray-100 z-10">
-                    Team Total
-                  </td>
-                  {teamTimesheetData.map((data, _employeeIndex) => (
-                    <td key={_employeeIndex} className={`px-3 py-4 text-center font-bold ${
-                      displayDates[_employeeIndex].toDateString() === today ? 'text-blue-700 bg-blue-100' : 'text-gray-900'
-                    }`}>
-                      {data.dailyHours[_employeeIndex] > 0 ? `${data.dailyHours[_employeeIndex].toFixed(1)}h` : '-'}
-                    </td>
-                  ))}
-                  <td className="px-6 py-4 text-center font-bold text-blue-700 text-xl bg-blue-100 sticky right-0 z-10 border-l border-gray-300">
-                    {teamTimesheetData.reduce((sum, data) => sum + data.totalHours, 0).toFixed(1)}h
-                  </td>
-                  <td className="px-6 py-4 text-center font-bold text-green-700 text-lg bg-green-100">
-                    {teamTimesheetData.reduce((sum, data) => sum + data.billableHours, 0).toFixed(1)}h
-                  </td>
-                  <td className="px-6 py-4 text-center font-bold text-gray-700 text-lg bg-gray-100">
-                    {teamTimesheetData.reduce((sum, data) => sum + data.nonBillableHours, 0).toFixed(1)}h
-                  </td>
-                </tr>
-              </tfoot>
+            <tfoot className="bg-gradient-to-r from-gray-100 to-gray-50 border-t-2 border-gray-300">
+  <tr>
+    <td className="px-6 py-4 font-bold text-gray-900 sticky left-0 bg-gray-100 z-10">
+      Team Total
+    </td>
+    {displayDates
+      .filter((date) => date && date instanceof Date && !isNaN(date.getTime()))
+      .map((date, dateIndex) => {
+        const isToday = date.toDateString() === today;
+        // Sum all employees' hours for this date
+        const totalHours = teamTimesheetData.reduce((sum, data) => sum + (data.dailyHours[dateIndex] || 0), 0);
+        return (
+          <td key={dateIndex} className={`px-3 py-4 text-center font-bold ${
+            isToday ? 'text-blue-700 bg-blue-100' : 'text-gray-900'
+          }`}>
+            {totalHours > 0 ? `${totalHours.toFixed(1)}h` : '-'}
+          </td>
+        );
+      })}
+    <td className="px-6 py-4 text-center font-bold text-blue-700 text-xl bg-blue-100 sticky right-0 z-10 border-l border-gray-300">
+      {teamTimesheetData.reduce((sum, data) => sum + data.totalHours, 0).toFixed(1)}h
+    </td>
+    <td className="px-6 py-4 text-center font-bold text-green-700 text-lg bg-green-100">
+      {teamTimesheetData.reduce((sum, data) => sum + data.billableHours, 0).toFixed(1)}h
+    </td>
+    <td className="px-6 py-4 text-center font-bold text-gray-700 text-lg bg-gray-100">
+      {teamTimesheetData.reduce((sum, data) => sum + data.nonBillableHours, 0).toFixed(1)}h
+    </td>
+  </tr>
+</tfoot>
             </table>
           </div>
         </div>
@@ -1161,7 +1205,7 @@ function addBulkEntry(e: React.MouseEvent<HTMLButtonElement>): void {
                         />
                       </div>
                       
-                      <div>
+                      {/* <div>
                         <label className="block text-sm font-medium text-gray-700">Date</label>
                         <input
                           type="date"
@@ -1170,7 +1214,7 @@ function addBulkEntry(e: React.MouseEvent<HTMLButtonElement>): void {
                           onChange={(e) => handleBulkChange(index, 'date', e.target.value)}
                           className="mt-2 p-2 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                         />
-                      </div>
+                      </div> */}
                       
                       <div>
                         <label className="block text-sm font-medium text-gray-700">Start Time</label>

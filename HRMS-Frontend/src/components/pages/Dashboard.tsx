@@ -10,7 +10,7 @@ import {
   PieChart,
   Activity,
   Award,
-  DollarSign,
+  IndianRupee ,
   UserPlus,
   Filter,
   Download,
@@ -216,7 +216,7 @@ export default function EnhancedHRDashboard() {
             value="$1.2M"
             change="Monthly budget"
             changeType="neutral"
-            icon={DollarSign}
+            icon={IndianRupee }
             gradient="bg-gradient-to-br from-teal-500 to-teal-600"
           />
         </div>
